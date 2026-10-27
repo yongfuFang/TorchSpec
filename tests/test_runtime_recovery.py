@@ -67,3 +67,37 @@ def test_pythonpath_forwarding(runtime, monkeypatch):
     assert "PYTHONPATH" not in runtime.env.get_torchspec_env_vars()
     monkeypatch.setenv("PYTHONPATH", "/shared/checkout:/shared/dependencies")
     assert runtime.env.get_torchspec_env_vars()["PYTHONPATH"] == "/shared/checkout:/shared/dependencies"
+
+
+def test_train_and_eval_queues_stay_with_controller(runtime):
+    controller_type = runtime.load("torchspec/controller/training_controller.py").AsyncTrainingController
+    controller = controller_type(SimpleNamespace(per_dp_rank_batch_size=1), dp_size=2)
+    assert len(controller.train_queues) == len(controller.eval_queues) == 2
+    assert runtime.queue.call_count == 4
+    for call in runtime.queue.call_args_list:
+        strategy = call.kwargs["actor_options"]["scheduling_strategy"]
+        assert strategy.node_id == "control-node"
+        assert strategy.soft is False
+
+
+@pytest.mark.parametrize("existing_controller", [False, True])
+def test_manager_stays_with_driver(runtime, existing_controller):
+    controller_factory, manager_factory = MagicMock(), MagicMock()
+    runtime.stub("torchspec.controller.training_controller", AsyncTrainingController=controller_factory)
+    runtime.stub("torchspec.controller.inference_manager", AsyncInferenceManager=manager_factory)
+    setup = runtime.load("torchspec/controller/setup.py")
+    supplied = MagicMock() if existing_controller else None
+    group = MagicMock()
+    args = SimpleNamespace(training_num_nodes=1, training_num_gpus_per_node=2, per_dp_rank_batch_size=1)
+    controller, manager = setup.setup_async_training_with_engines(args, group, object(), [], supplied)
+    strategy = manager_factory.options.call_args.kwargs["scheduling_strategy"]
+    assert strategy.node_id == "control-node"
+    assert strategy.soft is False
+    assert manager is manager_factory.options.return_value.remote.return_value
+    if existing_controller:
+        assert controller is supplied
+        controller_factory.options.assert_not_called()
+    else:
+        assert controller is controller_factory.options.return_value.remote.return_value
+    group.set_train_queues.assert_called_once()
+    group.set_eval_queues.assert_called_once()

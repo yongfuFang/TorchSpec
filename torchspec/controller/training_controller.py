@@ -56,6 +56,7 @@ from dataclasses import dataclass, field
 
 import ray
 from ray.util.queue import Queue
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 from torchspec.data.utils import length_grouped_order
 from torchspec.training.data_fetcher import TrainSample
@@ -140,7 +141,15 @@ class AsyncTrainingController:
         self._pool_bytes = 0
         self._sample_bytes: dict[str, int] = {}
 
-        self.train_queues = [Queue() for _ in range(self.queue_count)]
+        # Keep metadata queues with the controller when inference nodes are removed.
+        queue_actor_options = {
+            "scheduling_strategy": NodeAffinitySchedulingStrategy(
+                node_id=ray.get_runtime_context().get_node_id(), soft=False
+            )
+        }
+        self.train_queues = [
+            Queue(actor_options=queue_actor_options) for _ in range(self.queue_count)
+        ]
 
         # Eval: separate pool and queues so eval data never mixes with training
         self.eval_pool: deque[InferenceOutput] = deque()
@@ -148,7 +157,9 @@ class AsyncTrainingController:
         self._eval_data_ids: set[str] = set()
         self._eval_expected_count: int = 0
         self._eval_dispatched_samples: int = 0
-        self.eval_queues = [Queue() for _ in range(self.queue_count)]
+        self.eval_queues = [
+            Queue(actor_options=queue_actor_options) for _ in range(self.queue_count)
+        ]
 
         self.batch_id = 0
         self.dispatch_batch_size = args.per_dp_rank_batch_size * dp_size
