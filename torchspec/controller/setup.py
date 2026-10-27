@@ -23,6 +23,7 @@
 import math
 
 import ray
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 from torchspec.utils.env import get_torchspec_env_vars
 from torchspec.utils.logging import logger
@@ -58,8 +59,6 @@ def setup_async_training_with_engines(
     )
 
     if controller is None:
-        from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-
         driver_node_id = ray.get_runtime_context().get_node_id()
         controller = AsyncTrainingController.options(
             runtime_env={"env_vars": get_torchspec_env_vars()},
@@ -67,7 +66,11 @@ def setup_async_training_with_engines(
         ).remote(args, dp_size)
 
     max_concurrent = getattr(args, "max_concurrent_batches", 1)
-    inference_manager = AsyncInferenceManager.remote(
+    inference_manager = AsyncInferenceManager.options(
+        scheduling_strategy=NodeAffinitySchedulingStrategy(
+            node_id=ray.get_runtime_context().get_node_id(), soft=False
+        )
+    ).remote(
         args,
         controller,
         inference_engines=inference_engines,
