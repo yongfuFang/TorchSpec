@@ -62,3 +62,8 @@ def test_retry_settings_reach_runtime_config(runtime, values):
     assert tuple(getattr(config, key) for key in fields) == expected
 
 
+def test_pythonpath_forwarding(runtime, monkeypatch):
+    monkeypatch.delenv("PYTHONPATH", raising=False)
+    assert "PYTHONPATH" not in runtime.env.get_torchspec_env_vars()
+    monkeypatch.setenv("PYTHONPATH", "/shared/checkout:/shared/dependencies")
+    assert runtime.env.get_torchspec_env_vars()["PYTHONPATH"] == "/shared/checkout:/shared/dependencies"
