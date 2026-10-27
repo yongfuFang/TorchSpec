@@ -164,6 +164,13 @@ class MooncakeConfig:
             "get_batch_size": getattr(
                 args, "mooncake_get_batch_size", getattr(args, "per_dp_rank_batch_size", 1)
             ),
+            "get_retry_wait_seconds": getattr(args, "mooncake_get_retry_wait_seconds", 0.5),
+            "get_retry_log_interval_seconds": getattr(
+                args, "mooncake_get_retry_log_interval_seconds", 10.0
+            ),
+            "get_retry_max_wait_seconds": getattr(
+                args, "mooncake_get_retry_max_wait_seconds", 60.0
+            ),
             "kv_lease_ttl_s": getattr(args, "mooncake_kv_lease_ttl_s", 5.0),
             "enable_hard_pin": getattr(args, "mooncake_enable_hard_pin", False),
             "max_seq_len": getattr(
